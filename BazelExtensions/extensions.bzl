@@ -6,6 +6,7 @@
 
 AcknowledgementProvider = provider()
 
+
 def _acknowledgement_merger_impl(ctx):
     concat = list(ctx.attr.value.files) if ctx.attr.value else []
     action = "--merge" if ctx.attr.value else "--finalize"
@@ -126,35 +127,39 @@ def _make_module_map(pod_name, module_name, hdr_providers):
     template += "}\n"
     return template
 
+
 def _make_module_map_impl(ctx):
-  # We figure out how to build
-  out = _make_module_map(ctx.attr.pod_name, ctx.attr.module_name, ctx.attr.hdrs)
-  ctx.file_action(
-      content=out,
-      output=ctx.outputs.module_map
-  )
-  objc_provider = apple_common.new_objc_provider(
-      module_map=depset([ctx.outputs.module_map])
-  )
-  return struct(
-     files=depset([ctx.outputs.module_map]),
-     providers=[objc_provider],
-     objc=objc_provider,
-     headers=depset([ctx.outputs.module_map]),
-  )
+    # We figure out how to build
+    out = _make_module_map(
+        ctx.attr.pod_name, ctx.attr.module_name, ctx.attr.hdrs)
+    ctx.file_action(
+        content=out,
+        output=ctx.outputs.module_map
+    )
+    objc_provider = apple_common.new_objc_provider(
+        module_map=depset([ctx.outputs.module_map])
+    )
+    return struct(
+        files=depset([ctx.outputs.module_map]),
+        providers=[objc_provider],
+        objc=objc_provider,
+        headers=depset([ctx.outputs.module_map]),
+    )
+
 
 _gen_module_map = rule(
     implementation=_make_module_map_impl,
     output_to_genfiles=True,
-    attrs = {
+    attrs={
         "pod_name": attr.string(mandatory=True),
         "hdrs": attr.label_list(mandatory=True),
         "module_name": attr.string(mandatory=True),
         "dir_name": attr.string(mandatory=True),
         "module_map_name": attr.string(mandatory=True),
     },
-    outputs = { "module_map": "%{dir_name}/%{module_map_name}" }
+    outputs={"module_map": "%{dir_name}/%{module_map_name}"}
 )
+
 
 def gen_module_map(pod_name,
                    dir_name,
@@ -165,11 +170,96 @@ def gen_module_map(pod_name,
     Generate a module map based on a list of header file groups
     """
     # TODO:Modules change the name to dir_name -> pod_name
-    _gen_module_map(name = dir_name + "_module_map_file",
+    _gen_module_map(name=dir_name + "_module_map_file",
                     pod_name=pod_name,
                     dir_name=dir_name,
                     module_name=module_name,
                     hdrs=dep_hdrs,
                     module_map_name=module_map_name,
-                    visibility = ["//visibility:public"])
+                    visibility=["//visibility:public"])
 
+
+def _make_headermap_json(namespace, hdrs):
+    entries = []
+    for provider in hdrs:
+        for input_file in provider.files:
+            hdr = input_file
+            namespaced_key = namespace + "/" + hdr.basename
+            entries.append("\"%s\" : \"%s\"" % (namespaced_key, hdr.path))
+            entries.append("\"%s\" : \"%s\"" % (hdr.basename, hdr.path))
+
+    template = "{\n"
+    template += "\"mappings\": {"
+    idx = 0
+    # Don't include the trailing comma
+    for entry in entries:
+        template += entry
+        if idx != len(entries) - 1:
+            template += ","
+        idx = idx + 1
+    template += "}\n"
+    template += "}\n"
+    return template
+
+
+def _make_headermap_impl(ctx):
+    # Write a JSON file for *this* headermap
+    json_f = ctx.actions.declare_file(ctx.label.name + "_internal.json")
+    out = _make_headermap_json(ctx.attr.namespace, ctx.attr.hdrs)
+    ctx.file_action(
+        content=out,
+        output=json_f
+    )
+
+    # Add a list of headermaps in JSON or hmap format
+    args = [ctx.outputs.headermap.path, json_f.path]
+    inputs = [json_f]
+
+    # Extract propagated headermaps
+    for hdr_provider in ctx.attr.hdr_providers:
+        hdrs = hdr_provider.objc.header.to_list()
+        for hdr in hdrs:
+            if hdr.path.endswith(".hmap"):
+                # Add headermaps
+                inputs.append(hdr)
+                args.append(hdr.path)
+                print("Inserting Hdr", hdr.path)
+
+    ctx.action(
+        inputs=inputs,
+        arguments=args,
+        executable=ctx.attr.headermap_builder.files.to_list()[0],
+        outputs=[ctx.outputs.headermap]
+    )
+
+    objc_provider = apple_common.new_objc_provider(
+        header=depset([ctx.outputs.headermap])
+    )
+    return struct(
+        files=depset([ctx.outputs.headermap]),
+        providers=[objc_provider],
+        objc=objc_provider,
+        headers=depset([ctx.outputs.headermap]),
+    )
+
+
+# Derive a headermap from transitive headermaps
+# hdrs: a file group containing headers for this rule
+# namespace: the Apple style namespace these header should be under
+# hdr_providers: rules providing headers. i.e. an `objc_library`
+headermap = rule(
+    implementation=_make_headermap_impl,
+    output_to_genfiles=True,
+    attrs={
+        "namespace": attr.string(mandatory=True),
+        "hdrs": attr.label_list(mandatory=True),
+        "hdr_providers": attr.label_list(mandatory=False),
+        "headermap_builder": attr.label(
+            executable=True,
+            cfg="host",
+            default=Label(
+                "//Vendor/rules_pods/BazelExtensions:headermap_builder"),
+        )
+    },
+    outputs={"headermap": "%{name}.hmap"}
+)

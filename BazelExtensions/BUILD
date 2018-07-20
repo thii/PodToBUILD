@@ -15,3 +15,9 @@ py_binary(
     visibility = ["//visibility:public"]
 )
 
+py_binary(
+    name = "headermap_builder",
+    srcs = ["headermap_builder.py", "headermap_tool.py"],
+    visibility = ["//visibility:public"]
+)
+
