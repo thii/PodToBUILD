@@ -25,7 +25,6 @@ class BuildTests: XCTestCase {
         let examples = ["React", "PINRemoteImage", "Texture", "BasiciOS"]
         examples.forEach {
             example in
-            print("make -C \(rootDir)/Examples/\(example) fetch")
             let fetchTask = ShellTask(command: "/bin/bash", arguments: [
                     "-c",
                     "make -C \(rootDir)/Examples/\(example) fetch"
