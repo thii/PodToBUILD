@@ -108,7 +108,6 @@ public func .. <A, B, C>(lhs: Lens<A, B>, rhs: Lens<B, C>) -> Lens<A, C> {
  - returns: The composed lens.
  */
 infix operator >•>: MultiplicationPrecedence
-@available(*, deprecated)
 public func >•> <A, B, C>(lhs: Lens<A, B?>, rhs: Lens<B, C?>) -> Lens<A, C?> {
     return Lens(
         view: { a in lhs.view(a).flatMap(rhs.view) },
