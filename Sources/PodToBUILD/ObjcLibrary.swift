@@ -89,8 +89,8 @@ public struct ConfigSetting: BazelTarget {
     }
 }
 
-// https://bazel.build/versions/master/docs/be/objective-c.html#objc_framework
-public struct ObjcFramework: BazelTarget {
+// https://github.com/bazelbuild/rules_apple/blob/818e795208ae3ca1cf1501205549d46e6bc88d73/doc/rules-general.md#apple_static_framework_import
+public struct AppleStaticFrameworkImport: BazelTarget {
     let name: String // A unique name for this rule.
     let frameworkImports: AttrSet<[String]> // The list of files under a .framework directory which are provided to Objective-C targets that depend on this target.
 
@@ -98,17 +98,20 @@ public struct ObjcFramework: BazelTarget {
         return true
     }
 
-    // objc_framework(
+    // FIXME: provide an API for apple_static_framework_import.
+    // Assume that every framework is static.
+    // Typically CocoaPods supports either dynamic or static,
+    // so for the most part, this should be fine.
+    // apple_static_framework_import(
     //     name = "OCMock",
     //     framework_imports = [
     //         glob(["iOS/OCMock.framework/**"]),
     //     ],
-    //     is_dynamic = 1,
     //     visibility = ["visibility:public"]
     // )
     public func toSkylark() -> SkylarkNode {
         return SkylarkNode.functionCall(
-                name: "objc_framework",
+                name: "apple_static_framework_import",
                 arguments: [
                     .named(name: "name", value: .string(name)),
                     .named(name: "framework_imports",
@@ -118,11 +121,6 @@ public struct ObjcFramework: BazelTarget {
                                 },
                                 exclude: AttrSet.empty
                             ).toSkylark()),
-                     // FIXME: provide an API for this.
-                     // Assume that every framework is not dynamic.
-                     // Typically CocoaPods supports either dynamic or static,
-                     // so for the most part, this should be fine.
-                    .named(name: "is_dynamic", value: 0),
                     .named(name: "visibility", value: .list(["//visibility:public"]))
                 ]
         )
